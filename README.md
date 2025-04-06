@@ -1,8 +1,6 @@
 # writy-operator
-// TODO(user): Add simple overview of use/purpose
 
-## Description
-// TODO(user): An in-depth paragraph about your project and overview of use
+Kubernetes operator for [Writy](https://github.com/alirezaarzehgar/writy).
 
 ## Getting Started
 
@@ -89,8 +87,14 @@ Users can just run kubectl apply -f <URL for YAML BUNDLE> to install the project
 kubectl apply -f https://raw.githubusercontent.com/<org>/writy-operator/<tag or branch>/dist/install.yaml
 ```
 
-## Contributing
-// TODO(user): Add detailed information on how you would like others to contribute to this project
+## Contributingt
+
+See [CONTRIBUTING](CONTRIBUTING.md) for details on setting up your development environment, submitting patches and the contribution workflow.
+
+Please refer to community-membership.md for information on becoming an etcd project member. We welcome and look forward to your contributions to the project!
+
+Please also refer to roadmap to get more details on the priorities for the next few major or minor releases.
+
 
 **NOTE:** Run `make help` for more information on all potential `make` targets
 
