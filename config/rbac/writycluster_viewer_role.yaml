@@ -1,0 +1,23 @@
+# permissions for end users to view writyclusters.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: writy-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: writycluster-viewer-role
+rules:
+- apiGroups:
+  - operator.writy.io
+  resources:
+  - writyclusters
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - operator.writy.io
+  resources:
+  - writyclusters/status
+  verbs:
+  - get

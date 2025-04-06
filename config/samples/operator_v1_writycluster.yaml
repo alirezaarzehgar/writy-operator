@@ -1,0 +1,9 @@
+apiVersion: operator.writy.io/v1
+kind: WrityCluster
+metadata:
+  labels:
+    app.kubernetes.io/name: writy-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: writycluster-sample
+spec:
+  # TODO(user): Add fields here
