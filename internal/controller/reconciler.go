@@ -25,7 +25,7 @@ var (
 	defaultWrityImageVersion       = "v1.0.0"
 	defaultWrityPort         int32 = 8000
 	defaultLoadbalancerPort  int32 = 3000
-	defaultWrityLogLevel           = "warn"
+	defaultLogLevel                = "warn"
 )
 
 func getOwnerReferences(wc *apiv1.WrityCluster, c client.Client) ([]metav1.OwnerReference, error) {
@@ -90,7 +90,7 @@ func createOrPatchDbStatefulSet(ctx context.Context, logger logr.Logger, wc *api
 		ws.Port = &defaultWrityPort
 	}
 	if ws.LogLevel == "" {
-		ws.LogLevel = defaultWrityLogLevel
+		ws.LogLevel = defaultLogLevel
 	}
 
 	ss := wc.Spec.StorageSpec
@@ -254,11 +254,90 @@ func createOrPatchLoadbalancerService(ctx context.Context, logger logr.Logger, w
 }
 
 func createOrPatchLoadbalancer(ctx context.Context, logger logr.Logger, wc *apiv1.WrityCluster, c client.Client) error {
-	// How getting access to DB pods:
-	// $(DB_STATEFULSET_NAME)-$(INDEX).$(DB_SERVICE)
+	balancerName := fmt.Sprintf("%sloadbalancer", wc.Name)
+	labels := map[string]string{
+		"apps":       balancerName,
+		"controller": wc.Name,
+	}
 
-	balancerName := fmt.Sprintf("%s-loadbalancer", wc.Name)
-	_ = balancerName
+	lbs := wc.Spec.LoadBalancerSpec
+	if lbs == nil {
+		lbs = &apiv1.LoadBalancerSpec{}
+	}
+	balancerPort := defaultLoadbalancerPort
+	if lbs.Port != nil {
+		balancerPort = *lbs.Port
+	}
+	if lbs.LogLevel == "" {
+		lbs.LogLevel = defaultLogLevel
+	}
 
-	return nil
+	ws := wc.Spec.WritySpec
+	if ws == nil {
+		ws = &apiv1.WritySpec{}
+	}
+	if ws.Version == "" {
+		ws.Version = defaultWrityImageVersion
+	}
+
+	writyPort := defaultWrityPort
+	if wc.Spec.WritySpec.Port != nil {
+		writyPort = *wc.Spec.WritySpec.Port
+	}
+
+	args := []string{"--addr=$(RUNNING_ADDR)", "--db=/data", "--leveler=$(LOG_LEVEL)", "--reflection", "--balancer"}
+	dbServiceName := fmt.Sprintf("%s-service", wc.Name)
+
+	for i := 0; i < int(*wc.Spec.Size); i++ {
+		replica := fmt.Sprintf("--replica=%s-%d.%s:%d", wc.Name, i, dbServiceName, writyPort)
+		args = append(args, replica)
+	}
+
+	balancerSpec := v1.PodSpec{
+		Containers: []v1.Container{{
+			Name:    balancerName,
+			Ports:   []v1.ContainerPort{{ContainerPort: balancerPort}},
+			Image:   fmt.Sprintf("%s:%s", writyImage, ws.Version),
+			Command: []string{writyBinaryPath},
+			Args:    args,
+			Env: []v1.EnvVar{
+				{
+					Name:  "RUNNING_ADDR",
+					Value: fmt.Sprintf(":%d", balancerPort),
+				},
+				{
+					Name:  "LOG_LEVEL",
+					Value: ws.LogLevel,
+				},
+			},
+		}},
+	}
+
+	owners, err := getOwnerReferences(wc, c)
+	if err != nil {
+		return err
+	}
+
+	depl := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            balancerName,
+			Namespace:       wc.Namespace,
+			OwnerReferences: owners,
+		},
+		Spec: appsv1.DeploymentSpec{
+			Selector: &metav1.LabelSelector{MatchLabels: labels},
+			Template: v1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      balancerName,
+					Namespace: wc.Namespace,
+					Labels:    labels,
+				},
+				Spec: balancerSpec,
+			},
+		},
+	}
+
+	logger.Info("create/patch deployment", "deployment", depl)
+	_, err = controllerutil.CreateOrPatch(ctx, c, depl, func() error { return nil })
+	return err
 }
