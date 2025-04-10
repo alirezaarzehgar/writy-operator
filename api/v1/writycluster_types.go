@@ -20,16 +20,30 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
-
 // WrityClusterSpec defines the desired state of WrityCluster
 type WrityClusterSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	Size             uint              `json:"size,omitempty"`
+	Name             string            `json:"name,omitempty"`
+	StorageSpec      *StorageSpec      `json:"storage,omitempty"`
+	WritySpec        *WritySpec        `json:"writy,omitempty"`
+	LoadBalancerSpec *LoadBalancerSpec `json:"loadbalancer,omitempty"`
+}
 
-	// Foo is an example field of WrityCluster. Edit writycluster_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+type StorageSpec struct {
+	ClaimName       string `json:"claimName,omitempty"`
+	Class           string `json:"class,omitempty"`
+	ResourceRequest string `json:"resourceRequest,omitempty"`
+}
+
+type WritySpec struct {
+	Version  string `json:"version,omitempty"`
+	Port     uint   `json:"port,omitempty"`
+	LogLevel string `json:"logLevel,omitempty"`
+}
+
+type LoadBalancerSpec struct {
+	Port     uint   `json:"port,omitempty"`
+	LogLevel string `json:"logLevel,omitempty"`
 }
 
 // WrityClusterStatus defines the observed state of WrityCluster
