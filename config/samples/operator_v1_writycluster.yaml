@@ -4,6 +4,14 @@ metadata:
   labels:
     app.kubernetes.io/name: writy-operator
     app.kubernetes.io/managed-by: kustomize
-  name: writycluster-sample
+  name: writysample
 spec:
-  # TODO(user): Add fields here
+  size: 3
+  writy:
+    version: v1.0.0
+    port: 8000
+    logLevel: debug
+  storage:
+    claimName: data
+    class: standard
+    volumeSizeRequest: 1Gi

@@ -18,13 +18,22 @@ package controller
 
 import (
 	"context"
+	"time"
 
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
+	apiv1 "github.com/alirezaarzehgar/writy-operator/api/v1"
 	operatorv1 "github.com/alirezaarzehgar/writy-operator/api/v1"
+)
+
+var (
+	requeueDuration = time.Second * 10
 )
 
 // WrityClusterReconciler reconciles a WrityCluster object
@@ -47,9 +56,49 @@ type WrityClusterReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.19.0/pkg/reconcile
 func (r *WrityClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
+	logger := log.FromContext(ctx)
 
-	// TODO(user): your logic here
+	writyCluster := &apiv1.WrityCluster{}
+	err := r.Get(ctx, req.NamespacedName, writyCluster)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			logger.Info("WrityCluster resource not found", "error", err)
+			return ctrl.Result{}, nil
+		}
+
+		logger.Info("failed to get WrityCluster resource", "error", err)
+		return ctrl.Result{RequeueAfter: requeueDuration}, err
+	}
+
+	if writyCluster.Spec.Size == nil {
+		logger.Info("no size defined: set Spec.Size to 1")
+		*writyCluster.Spec.Size = 1
+	}
+
+	if *writyCluster.Spec.Size == 0 {
+		logger.Info("Skip the next steps: WrityCluster Size is 0")
+		return ctrl.Result{}, nil
+	}
+
+	var stfs appsv1.StatefulSet
+	err = r.Get(ctx, req.NamespacedName, &stfs)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			logger.Info("create StatefulSet if not exists", "WrityCluster", writyCluster)
+
+			err := reconcielWrityCluster(ctx, logger, writyCluster, req, r.Client)
+			return ctrl.Result{}, err
+		} else {
+			logger.Info("failed to get StatefulSet. Requeue request", "requeue time", requeueDuration, "error", err)
+			return ctrl.Result{RequeueAfter: requeueDuration}, err
+		}
+	}
+
+	logger.Info("update WrityCluster")
+	err = reconcielWrityCluster(ctx, logger, writyCluster, req, r.Client)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
 
 	return ctrl.Result{}, nil
 }
@@ -58,5 +107,8 @@ func (r *WrityClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 func (r *WrityClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&operatorv1.WrityCluster{}).
+		Owns(&appsv1.StatefulSet{}).
+		Owns(&appsv1.Deployment{}).
+		Owns(&corev1.Service{}).
 		Complete(r)
 }

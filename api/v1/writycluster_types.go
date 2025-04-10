@@ -17,22 +17,23 @@ limitations under the License.
 package v1
 
 import (
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // WrityClusterSpec defines the desired state of WrityCluster
 type WrityClusterSpec struct {
-	Size             uint              `json:"size,omitempty"`
-	Name             string            `json:"name,omitempty"`
+	Size             *int32            `json:"size,omitempty"`
 	StorageSpec      *StorageSpec      `json:"storage,omitempty"`
 	WritySpec        *WritySpec        `json:"writy,omitempty"`
 	LoadBalancerSpec *LoadBalancerSpec `json:"loadbalancer,omitempty"`
 }
 
 type StorageSpec struct {
-	ClaimName       string `json:"claimName,omitempty"`
-	Class           string `json:"class,omitempty"`
-	ResourceRequest string `json:"resourceRequest,omitempty"`
+	ClaimName         string            `json:"claimName,omitempty"`
+	Class             string            `json:"class,omitempty"`
+	VolumeSizeRequest resource.Quantity `json:"volumeSizeRequest,omitempty"`
+	VolumeSizeLimit   resource.Quantity `json:"volumeSizeLimit,omitempty"`
 }
 
 type WritySpec struct {

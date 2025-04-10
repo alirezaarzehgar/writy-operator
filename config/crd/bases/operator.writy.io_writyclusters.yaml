@@ -46,9 +46,8 @@ spec:
                   port:
                     type: integer
                 type: object
-              name:
-                type: string
               size:
+                format: int32
                 type: integer
               storage:
                 properties:
@@ -56,8 +55,18 @@ spec:
                     type: string
                   class:
                     type: string
-                  resourceRequest:
-                    type: string
+                  volumeSizeLimit:
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                    x-kubernetes-int-or-string: true
+                  volumeSizeRequest:
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                    x-kubernetes-int-or-string: true
                 type: object
               writy:
                 properties:
