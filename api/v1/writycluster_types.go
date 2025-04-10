@@ -43,7 +43,7 @@ type WritySpec struct {
 }
 
 type LoadBalancerSpec struct {
-	Port     uint   `json:"port,omitempty"`
+	Port     *int32 `json:"port,omitempty"`
 	LogLevel string `json:"logLevel,omitempty"`
 }
 

@@ -24,6 +24,7 @@ var (
 	writyBinaryPath                = "/bin/writy"
 	defaultWrityImageVersion       = "v1.0.0"
 	defaultWrityPort         int32 = 8000
+	defaultLoadbalancerPort  int32 = 3000
 	defaultWrityLogLevel           = "warn"
 )
 
@@ -53,6 +54,10 @@ func reconcielWrityCluster(ctx context.Context, logger logr.Logger, writyCluster
 	}
 
 	if err := createOrPatchDbStatefulSet(ctx, logger, writyCluster, c); err != nil {
+		return err
+	}
+
+	if err := createOrPatchLoadbalancerService(ctx, logger, writyCluster, c); err != nil {
 		return err
 	}
 
@@ -89,6 +94,9 @@ func createOrPatchDbStatefulSet(ctx context.Context, logger logr.Logger, wc *api
 	}
 
 	ss := wc.Spec.StorageSpec
+	if ss == nil {
+		ss = &apiv1.StorageSpec{}
+	}
 	if ss.ClaimName == "" {
 		ss.ClaimName = "data"
 	}
@@ -209,7 +217,48 @@ func createOrPatchDbSertvice(ctx context.Context, logger logr.Logger, wc *apiv1.
 	return err
 }
 
+func createOrPatchLoadbalancerService(ctx context.Context, logger logr.Logger, wc *apiv1.WrityCluster, c client.Client) error {
+	balancerName := fmt.Sprintf("%sloadbalancer", wc.Name)
+	labels := map[string]string{
+		"apps":       balancerName,
+		"controller": wc.Name,
+	}
+
+	lbs := wc.Spec.LoadBalancerSpec
+	if lbs == nil {
+		lbs = &apiv1.LoadBalancerSpec{}
+	}
+	port := defaultLoadbalancerPort
+	if lbs.Port != nil {
+		port = *lbs.Port
+	}
+
+	balancerService := fmt.Sprintf("%s-service", balancerName)
+	service := v1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      balancerService,
+			Namespace: wc.Namespace,
+		},
+		Spec: v1.ServiceSpec{
+			Selector: labels,
+			Ports: []v1.ServicePort{{
+				Port:       port,
+				TargetPort: intstr.FromInt32(port),
+			}},
+		},
+	}
+
+	logger.Info("create/update loadbalancer service", "port", port, "labels", labels)
+	_, err := controllerutil.CreateOrPatch(ctx, c, &service, func() error { return nil })
+	return err
+}
+
 func createOrPatchLoadbalancer(ctx context.Context, logger logr.Logger, wc *apiv1.WrityCluster, c client.Client) error {
+	// How getting access to DB pods:
+	// $(DB_STATEFULSET_NAME)-$(INDEX).$(DB_SERVICE)
+
+	balancerName := fmt.Sprintf("%s-loadbalancer", wc.Name)
+	_ = balancerName
 
 	return nil
 }
