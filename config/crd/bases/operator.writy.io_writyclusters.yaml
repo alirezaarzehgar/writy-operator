@@ -73,6 +73,7 @@ spec:
                   logLevel:
                     type: string
                   port:
+                    format: int32
                     type: integer
                   version:
                     type: string

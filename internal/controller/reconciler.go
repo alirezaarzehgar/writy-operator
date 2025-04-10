@@ -10,6 +10,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
@@ -17,13 +18,13 @@ import (
 )
 
 var (
-	defaultStorageClaimName       = "data"
-	defaultStorageClassName       = "standard"
-	writyImage                    = "alirezaarzehgar/writy"
-	writyBinaryPath               = "/bin/writy"
-	defaultWrityImageVersion      = "v1.0.0"
-	defaultWrityPort         uint = 8000
-	defaultWrityLogLevel          = "warn"
+	defaultStorageClaimName        = "data"
+	defaultStorageClassName        = "standard"
+	writyImage                     = "alirezaarzehgar/writy"
+	writyBinaryPath                = "/bin/writy"
+	defaultWrityImageVersion       = "v1.0.0"
+	defaultWrityPort         int32 = 8000
+	defaultWrityLogLevel           = "warn"
 )
 
 func getOwnerReferences(wc *apiv1.WrityCluster, c client.Client) ([]metav1.OwnerReference, error) {
@@ -47,7 +48,11 @@ func getOwnerReferences(wc *apiv1.WrityCluster, c client.Client) ([]metav1.Owner
 }
 
 func reconcielWrityCluster(ctx context.Context, logger logr.Logger, writyCluster *apiv1.WrityCluster, c client.Client) error {
-	if err := createOrPatchStatefulSet(ctx, logger, writyCluster, c); err != nil {
+	if err := createOrPatchDbSertvice(ctx, logger, writyCluster, c); err != nil {
+		return err
+	}
+
+	if err := createOrPatchDbStatefulSet(ctx, logger, writyCluster, c); err != nil {
 		return err
 	}
 
@@ -58,7 +63,7 @@ func reconcielWrityCluster(ctx context.Context, logger logr.Logger, writyCluster
 	return nil
 }
 
-func createOrPatchStatefulSet(ctx context.Context, logger logr.Logger, wc *apiv1.WrityCluster, c client.Client) error {
+func createOrPatchDbStatefulSet(ctx context.Context, logger logr.Logger, wc *apiv1.WrityCluster, c client.Client) error {
 	owners, err := getOwnerReferences(wc, c)
 	if err != nil {
 		return err
@@ -76,8 +81,8 @@ func createOrPatchStatefulSet(ctx context.Context, logger logr.Logger, wc *apiv1
 	if ws.Version == "" {
 		ws.Version = defaultWrityImageVersion
 	}
-	if ws.Port == 0 {
-		ws.Port = defaultWrityPort
+	if ws.Port == nil {
+		ws.Port = &defaultWrityPort
 	}
 	if ws.LogLevel == "" {
 		ws.LogLevel = defaultWrityLogLevel
@@ -107,7 +112,7 @@ func createOrPatchStatefulSet(ctx context.Context, logger logr.Logger, wc *apiv1
 			Env: []v1.EnvVar{
 				{
 					Name:  "RUNNING_ADDR",
-					Value: fmt.Sprintf(":%d", ws.Port),
+					Value: fmt.Sprintf(":%d", *ws.Port),
 				},
 				{
 					Name:  "LOG_LEVEL",
@@ -145,13 +150,16 @@ func createOrPatchStatefulSet(ctx context.Context, logger logr.Logger, wc *apiv1
 		}}
 	}
 
+	serviceName := fmt.Sprintf("%s-service", wc.Name)
+
 	stfs := &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      wc.Name,
 			Namespace: wc.Namespace,
 		},
 		Spec: appsv1.StatefulSetSpec{
-			Replicas: wc.Spec.Size,
+			Replicas:    wc.Spec.Size,
+			ServiceName: serviceName,
 			Selector: &metav1.LabelSelector{
 				MatchLabels: lables,
 			},
@@ -166,11 +174,39 @@ func createOrPatchStatefulSet(ctx context.Context, logger logr.Logger, wc *apiv1
 	}
 
 	logger.Info("create/patch statefulset", "StatefulSet", stfs)
-	controllerutil.CreateOrPatch(ctx, c, stfs, func() error {
-		return nil
-	})
+	_, err = controllerutil.CreateOrPatch(ctx, c, stfs, func() error { return nil })
+	return err
+}
 
-	return nil
+func createOrPatchDbSertvice(ctx context.Context, logger logr.Logger, wc *apiv1.WrityCluster, c client.Client) error {
+	labels := map[string]string{
+		"apps":       wc.Name,
+		"controller": wc.Name,
+	}
+
+	port := defaultWrityPort
+	if wc.Spec.WritySpec.Port != nil {
+		port = *wc.Spec.WritySpec.Port
+	}
+
+	serviceName := fmt.Sprintf("%s-service", wc.Name)
+	service := v1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      serviceName,
+			Namespace: wc.Namespace,
+		},
+		Spec: v1.ServiceSpec{
+			Selector: labels,
+			Ports: []v1.ServicePort{{
+				Port:       port,
+				TargetPort: intstr.FromInt32(port),
+			}},
+		},
+	}
+
+	logger.Info("create/update writy service", "port", port, "labels", labels)
+	_, err := controllerutil.CreateOrPatch(ctx, c, &service, func() error { return nil })
+	return err
 }
 
 func createOrPatchLoadbalancer(ctx context.Context, logger logr.Logger, wc *apiv1.WrityCluster, c client.Client) error {

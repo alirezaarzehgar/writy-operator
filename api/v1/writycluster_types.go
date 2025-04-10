@@ -38,7 +38,7 @@ type StorageSpec struct {
 
 type WritySpec struct {
 	Version  string `json:"version,omitempty"`
-	Port     uint   `json:"port,omitempty"`
+	Port     *int32 `json:"port,omitempty"`
 	LogLevel string `json:"logLevel,omitempty"`
 }
 
