@@ -86,7 +86,7 @@ func (r *WrityClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		if errors.IsNotFound(err) {
 			logger.Info("create StatefulSet if not exists", "WrityCluster", writyCluster)
 
-			err := reconcielWrityCluster(ctx, logger, writyCluster, req, r.Client)
+			err := reconcielWrityCluster(ctx, logger, writyCluster, r.Client)
 			return ctrl.Result{}, err
 		} else {
 			logger.Info("failed to get StatefulSet. Requeue request", "requeue time", requeueDuration, "error", err)
@@ -95,7 +95,7 @@ func (r *WrityClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	logger.Info("update WrityCluster")
-	err = reconcielWrityCluster(ctx, logger, writyCluster, req, r.Client)
+	err = reconcielWrityCluster(ctx, logger, writyCluster, r.Client)
 	if err != nil {
 		return ctrl.Result{}, err
 	}

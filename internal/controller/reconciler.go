@@ -11,7 +11,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -47,19 +46,19 @@ func getOwnerReferences(wc *apiv1.WrityCluster, c client.Client) ([]metav1.Owner
 	return owners, nil
 }
 
-func reconcielWrityCluster(ctx context.Context, logger logr.Logger, writyCluster *apiv1.WrityCluster, req ctrl.Request, c client.Client) error {
-	if err := createOrPatchStatefulSet(ctx, logger, writyCluster, req, c); err != nil {
+func reconcielWrityCluster(ctx context.Context, logger logr.Logger, writyCluster *apiv1.WrityCluster, c client.Client) error {
+	if err := createOrPatchStatefulSet(ctx, logger, writyCluster, c); err != nil {
 		return err
 	}
 
-	if err := createOrPatchLoadbalancer(ctx, logger, writyCluster, req); err != nil {
+	if err := createOrPatchLoadbalancer(ctx, logger, writyCluster, c); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func createOrPatchStatefulSet(ctx context.Context, logger logr.Logger, wc *apiv1.WrityCluster, req ctrl.Request, c client.Client) error {
+func createOrPatchStatefulSet(ctx context.Context, logger logr.Logger, wc *apiv1.WrityCluster, c client.Client) error {
 	owners, err := getOwnerReferences(wc, c)
 	if err != nil {
 		return err
@@ -174,7 +173,7 @@ func createOrPatchStatefulSet(ctx context.Context, logger logr.Logger, wc *apiv1
 	return nil
 }
 
-func createOrPatchLoadbalancer(ctx context.Context, logger logr.Logger, writyCluster *apiv1.WrityCluster, req ctrl.Request) error {
+func createOrPatchLoadbalancer(ctx context.Context, logger logr.Logger, wc *apiv1.WrityCluster, c client.Client) error {
 
 	return nil
 }
