@@ -181,6 +181,12 @@ func createOrPatchDbStatefulSet(ctx context.Context, logger logr.Logger, wc *api
 		},
 	}
 
+	err = controllerutil.SetControllerReference(wc, stfs, c.Scheme())
+	if err != nil {
+		logger.Info("failed to set controller reference from WrityCluster to StatefulSet", "error", err)
+		return err
+	}
+
 	logger.Info("create/patch statefulset", "StatefulSet", stfs)
 	_, err = controllerutil.CreateOrPatch(ctx, c, stfs, func() error { return nil })
 	return err
@@ -212,8 +218,14 @@ func createOrPatchDbSertvice(ctx context.Context, logger logr.Logger, wc *apiv1.
 		},
 	}
 
+	err := controllerutil.SetControllerReference(wc, &service, c.Scheme())
+	if err != nil {
+		logger.Info("failed to set controller reference from WrityCluster to database service", "error", err)
+		return err
+	}
+
 	logger.Info("create/update writy service", "port", port, "labels", labels)
-	_, err := controllerutil.CreateOrPatch(ctx, c, &service, func() error { return nil })
+	_, err = controllerutil.CreateOrPatch(ctx, c, &service, func() error { return nil })
 	return err
 }
 
@@ -248,8 +260,14 @@ func createOrPatchLoadbalancerService(ctx context.Context, logger logr.Logger, w
 		},
 	}
 
+	err := controllerutil.SetControllerReference(wc, &service, c.Scheme())
+	if err != nil {
+		logger.Info("failed to set controller reference from WrityCluster to loadbalancer service", "error", err)
+		return err
+	}
+
 	logger.Info("create/update loadbalancer service", "port", port, "labels", labels)
-	_, err := controllerutil.CreateOrPatch(ctx, c, &service, func() error { return nil })
+	_, err = controllerutil.CreateOrPatch(ctx, c, &service, func() error { return nil })
 	return err
 }
 
@@ -335,6 +353,12 @@ func createOrPatchLoadbalancer(ctx context.Context, logger logr.Logger, wc *apiv
 				Spec: balancerSpec,
 			},
 		},
+	}
+
+	err = controllerutil.SetControllerReference(wc, depl, c.Scheme())
+	if err != nil {
+		logger.Info("failed to set controller reference from WrityCluster to database deployment", "error", err)
+		return err
 	}
 
 	logger.Info("create/patch deployment", "deployment", depl)
