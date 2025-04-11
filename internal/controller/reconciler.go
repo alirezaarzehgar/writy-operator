@@ -158,41 +158,55 @@ func createOrPatchDbStatefulSet(ctx context.Context, logger logr.Logger, wc *api
 		}}
 	}
 
+	logger.Info("create statefulset data", "size", wc.Spec.Size)
 	serviceName := fmt.Sprintf("%s-service", wc.Name)
+
+	stfsSpecs := appsv1.StatefulSetSpec{
+		Replicas:    wc.Spec.Size,
+		ServiceName: serviceName,
+		Selector: &metav1.LabelSelector{
+			MatchLabels: lables,
+		},
+		Template: v1.PodTemplateSpec{
+			ObjectMeta: metav1.ObjectMeta{
+				Labels: lables,
+			},
+			Spec: specs,
+		},
+		VolumeClaimTemplates: vct,
+	}
 
 	stfs := &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      wc.Name,
-			Namespace: wc.Namespace,
+			Name:            wc.Name,
+			Namespace:       wc.Namespace,
+			OwnerReferences: owners,
 		},
-		Spec: appsv1.StatefulSetSpec{
-			Replicas:    wc.Spec.Size,
-			ServiceName: serviceName,
-			Selector: &metav1.LabelSelector{
-				MatchLabels: lables,
-			},
-			Template: v1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: lables,
-				},
-				Spec: specs,
-			},
-			VolumeClaimTemplates: vct,
-		},
+		Spec: stfsSpecs,
 	}
 
 	err = controllerutil.SetControllerReference(wc, stfs, c.Scheme())
-	if err != nil {
-		logger.Info("failed to set controller reference from WrityCluster to StatefulSet", "error", err)
-		return err
-	}
+	logger.Info("set controller reference from WrityCluster to StatefulSet", "error", err)
 
 	logger.Info("create/patch statefulset", "StatefulSet", stfs)
-	_, err = controllerutil.CreateOrPatch(ctx, c, stfs, func() error { return nil })
+	_, err = controllerutil.CreateOrPatch(ctx, c, stfs, func() error {
+		stfs.ObjectMeta = metav1.ObjectMeta{
+			Name:            wc.Name,
+			Namespace:       wc.Namespace,
+			OwnerReferences: owners,
+		}
+		stfs.Spec = stfsSpecs
+		return nil
+	})
 	return err
 }
 
 func createOrPatchDbSertvice(ctx context.Context, logger logr.Logger, wc *apiv1.WrityCluster, c client.Client) error {
+	owners, err := getOwnerReferences(wc, c)
+	if err != nil {
+		return err
+	}
+
 	labels := map[string]string{
 		"apps":       wc.Name,
 		"controller": wc.Name,
@@ -203,33 +217,46 @@ func createOrPatchDbSertvice(ctx context.Context, logger logr.Logger, wc *apiv1.
 		port = *wc.Spec.WritySpec.Port
 	}
 
-	serviceName := fmt.Sprintf("%s-service", wc.Name)
-	service := v1.Service{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      serviceName,
-			Namespace: wc.Namespace,
-		},
-		Spec: v1.ServiceSpec{
-			Selector: labels,
-			Ports: []v1.ServicePort{{
-				Port:       port,
-				TargetPort: intstr.FromInt32(port),
-			}},
-		},
+	serviceSpecs := v1.ServiceSpec{
+		Selector: labels,
+		Ports: []v1.ServicePort{{
+			Port:       port,
+			TargetPort: intstr.FromInt32(port),
+		}},
 	}
 
-	err := controllerutil.SetControllerReference(wc, &service, c.Scheme())
-	if err != nil {
-		logger.Info("failed to set controller reference from WrityCluster to database service", "error", err)
-		return err
+	serviceName := fmt.Sprintf("%s-service", wc.Name)
+	service := &v1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            serviceName,
+			Namespace:       wc.Namespace,
+			OwnerReferences: owners,
+		},
+		Spec: serviceSpecs,
 	}
+
+	err = controllerutil.SetControllerReference(wc, service, c.Scheme())
+	logger.Info("set controller reference from WrityCluster to database service", "error", err)
 
 	logger.Info("create/update writy service", "port", port, "labels", labels)
-	_, err = controllerutil.CreateOrPatch(ctx, c, &service, func() error { return nil })
+	_, err = controllerutil.CreateOrPatch(ctx, c, service, func() error {
+		service.ObjectMeta = metav1.ObjectMeta{
+			Name:            serviceName,
+			Namespace:       wc.Namespace,
+			OwnerReferences: owners,
+		}
+		service.Spec = serviceSpecs
+		return nil
+	})
 	return err
 }
 
 func createOrPatchLoadbalancerService(ctx context.Context, logger logr.Logger, wc *apiv1.WrityCluster, c client.Client) error {
+	owners, err := getOwnerReferences(wc, c)
+	if err != nil {
+		return err
+	}
+
 	balancerName := fmt.Sprintf("%sloadbalancer", wc.Name)
 	labels := map[string]string{
 		"apps":       balancerName,
@@ -245,29 +272,37 @@ func createOrPatchLoadbalancerService(ctx context.Context, logger logr.Logger, w
 		port = *lbs.Port
 	}
 
-	balancerService := fmt.Sprintf("%s-service", balancerName)
-	service := v1.Service{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      balancerService,
-			Namespace: wc.Namespace,
-		},
-		Spec: v1.ServiceSpec{
-			Selector: labels,
-			Ports: []v1.ServicePort{{
-				Port:       port,
-				TargetPort: intstr.FromInt32(port),
-			}},
-		},
+	serviceSpecs := v1.ServiceSpec{
+		Selector: labels,
+		Ports: []v1.ServicePort{{
+			Port:       port,
+			TargetPort: intstr.FromInt32(port),
+		}},
 	}
 
-	err := controllerutil.SetControllerReference(wc, &service, c.Scheme())
-	if err != nil {
-		logger.Info("failed to set controller reference from WrityCluster to loadbalancer service", "error", err)
-		return err
+	balancerService := fmt.Sprintf("%s-service", balancerName)
+	service := &v1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            balancerService,
+			Namespace:       wc.Namespace,
+			OwnerReferences: owners,
+		},
+		Spec: serviceSpecs,
 	}
+
+	err = controllerutil.SetControllerReference(wc, service, c.Scheme())
+	logger.Info("set controller reference from WrityCluster to loadbalancer service", "error", err)
 
 	logger.Info("create/update loadbalancer service", "port", port, "labels", labels)
-	_, err = controllerutil.CreateOrPatch(ctx, c, &service, func() error { return nil })
+	_, err = controllerutil.CreateOrPatch(ctx, c, service, func() error {
+		service.ObjectMeta = metav1.ObjectMeta{
+			Name:            balancerService,
+			Namespace:       wc.Namespace,
+			OwnerReferences: owners,
+		}
+		service.Spec = serviceSpecs
+		return nil
+	})
 	return err
 }
 
@@ -336,32 +371,39 @@ func createOrPatchLoadbalancer(ctx context.Context, logger logr.Logger, wc *apiv
 		return err
 	}
 
+	deplSpecs := appsv1.DeploymentSpec{
+		Selector: &metav1.LabelSelector{MatchLabels: labels},
+		Template: v1.PodTemplateSpec{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      balancerName,
+				Namespace: wc.Namespace,
+				Labels:    labels,
+			},
+			Spec: balancerSpec,
+		},
+	}
+
 	depl := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            balancerName,
 			Namespace:       wc.Namespace,
 			OwnerReferences: owners,
 		},
-		Spec: appsv1.DeploymentSpec{
-			Selector: &metav1.LabelSelector{MatchLabels: labels},
-			Template: v1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      balancerName,
-					Namespace: wc.Namespace,
-					Labels:    labels,
-				},
-				Spec: balancerSpec,
-			},
-		},
+		Spec: deplSpecs,
 	}
 
 	err = controllerutil.SetControllerReference(wc, depl, c.Scheme())
-	if err != nil {
-		logger.Info("failed to set controller reference from WrityCluster to database deployment", "error", err)
-		return err
-	}
+	logger.Info("set controller reference from WrityCluster to database deployment", "error", err)
 
 	logger.Info("create/patch deployment", "deployment", depl)
-	_, err = controllerutil.CreateOrPatch(ctx, c, depl, func() error { return nil })
+	_, err = controllerutil.CreateOrPatch(ctx, c, depl, func() error {
+		depl.ObjectMeta = metav1.ObjectMeta{
+			Name:            balancerName,
+			Namespace:       wc.Namespace,
+			OwnerReferences: owners,
+		}
+		depl.Spec = deplSpecs
+		return nil
+	})
 	return err
 }

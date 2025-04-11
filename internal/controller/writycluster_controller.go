@@ -94,10 +94,12 @@ func (r *WrityClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		}
 	}
 
-	logger.Info("update WrityCluster")
-	err = reconcielWrityCluster(ctx, logger, writyCluster, r.Client)
-	if err != nil {
-		return ctrl.Result{}, err
+	if *stfs.Spec.Replicas != *writyCluster.Spec.Size {
+		logger.Info("we should slace up/down", "actual", stfs.Spec.Replicas, "desired", writyCluster.Spec.Size)
+		err := createOrPatchDbStatefulSet(ctx, logger, writyCluster, r.Client)
+		if err != nil {
+			return ctrl.Result{RequeueAfter: requeueDuration}, err
+		}
 	}
 
 	return ctrl.Result{}, nil
