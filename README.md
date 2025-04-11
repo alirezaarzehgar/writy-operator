@@ -21,6 +21,8 @@ make docker-build docker-push IMG=<some-registry>/writy-operator:tag
 And it is required to have access to pull the image from the working environment.
 Make sure you have the proper permission to the registry if the above commands don’t work.
 
+Image is available on alirezaarzehgar/writy-operator:latest and you can skip this step.
+
 **Install the CRDs into the cluster:**
 
 ```sh
@@ -28,6 +30,12 @@ make install
 ```
 
 **Deploy the Manager to the cluster with the image specified by `IMG`:**
+
+```sh
+make deploy IMG=alirezaarzehgar/writy-operator:latest
+```
+
+or
 
 ```sh
 make deploy IMG=<some-registry>/writy-operator:tag
@@ -64,7 +72,7 @@ make uninstall
 make undeploy
 ```
 
-## Project Distribution
+<!-- ## Project Distribution
 
 Following are the steps to build the installer and distribute this project to users.
 
@@ -85,7 +93,7 @@ Users can just run kubectl apply -f <URL for YAML BUNDLE> to install the project
 
 ```sh
 kubectl apply -f https://raw.githubusercontent.com/<org>/writy-operator/<tag or branch>/dist/install.yaml
-```
+``` -->
 
 ## Contributingt
 
