@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -97,10 +96,9 @@ func (r *WrityClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		}
 	}
 
-	balancerName := fmt.Sprintf("%sloadbalancer", writyCluster.Name)
 	depl := &appsv1.Deployment{}
 	findMe := types.NamespacedName{
-		Name:      balancerName,
+		Name:      getBalancerName(writyCluster.Name),
 		Namespace: writyCluster.Namespace,
 	}
 	err = r.Get(ctx, findMe, depl)

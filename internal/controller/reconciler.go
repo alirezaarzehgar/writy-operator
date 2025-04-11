@@ -15,17 +15,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
-var (
-	defaultStorageClaimName        = "data"
-	defaultStorageClassName        = "standard"
-	writyImage                     = "alirezaarzehgar/writy"
-	writyBinaryPath                = "/bin/writy"
-	defaultWrityImageVersion       = "v1.0.0"
-	defaultWrityPort         int32 = 8000
-	defaultLoadbalancerPort  int32 = 3000
-	defaultLogLevel                = "warn"
-)
-
 func reconcielWrityCluster(ctx context.Context, logger logr.Logger, writyCluster *apiv1.WrityCluster, c client.Client) error {
 	if err := createOrPatchDbSertvice(ctx, logger, writyCluster, c); err != nil {
 		return err
@@ -132,11 +121,10 @@ func createOrPatchDbStatefulSet(ctx context.Context, logger logr.Logger, wc *api
 	}
 
 	logger.Info("create statefulset data", "size", wc.Spec.Size)
-	serviceName := fmt.Sprintf("%s-service", wc.Name)
 
 	stfsSpecs := appsv1.StatefulSetSpec{
 		Replicas:    wc.Spec.Size,
-		ServiceName: serviceName,
+		ServiceName: getServiceName(wc.Name),
 		Selector: &metav1.LabelSelector{
 			MatchLabels: lables,
 		},
@@ -184,10 +172,9 @@ func createOrPatchDbSertvice(ctx context.Context, logger logr.Logger, wc *apiv1.
 		}},
 	}
 
-	serviceName := fmt.Sprintf("%s-service", wc.Name)
 	service := &v1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      serviceName,
+			Name:      getServiceName(wc.Name),
 			Namespace: wc.Namespace,
 		},
 		Spec: serviceSpecs,
@@ -202,7 +189,7 @@ func createOrPatchDbSertvice(ctx context.Context, logger logr.Logger, wc *apiv1.
 }
 
 func createOrPatchLoadbalancerService(ctx context.Context, logger logr.Logger, wc *apiv1.WrityCluster, c client.Client) error {
-	balancerName := fmt.Sprintf("%sloadbalancer", wc.Name)
+	balancerName := getBalancerName(wc.Name)
 	labels := map[string]string{
 		"apps":       balancerName,
 		"controller": wc.Name,
@@ -225,10 +212,9 @@ func createOrPatchLoadbalancerService(ctx context.Context, logger logr.Logger, w
 		}},
 	}
 
-	balancerService := fmt.Sprintf("%s-service", balancerName)
 	service := &v1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      balancerService,
+			Name:      getServiceName(balancerName),
 			Namespace: wc.Namespace,
 		},
 		Spec: serviceSpecs,
@@ -243,7 +229,7 @@ func createOrPatchLoadbalancerService(ctx context.Context, logger logr.Logger, w
 }
 
 func createOrPatchLoadbalancer(ctx context.Context, logger logr.Logger, wc *apiv1.WrityCluster, c client.Client) error {
-	balancerName := fmt.Sprintf("%sloadbalancer", wc.Name)
+	balancerName := getBalancerName(wc.Name)
 	labels := map[string]string{
 		"apps":       balancerName,
 		"controller": wc.Name,
@@ -275,10 +261,9 @@ func createOrPatchLoadbalancer(ctx context.Context, logger logr.Logger, wc *apiv
 	}
 
 	args := []string{"--addr=$(RUNNING_ADDR)", "--db=/data", "--leveler=$(LOG_LEVEL)", "--reflection", "--balancer"}
-	dbServiceName := fmt.Sprintf("%s-service", wc.Name)
 
 	for i := 0; i < int(*wc.Spec.Size); i++ {
-		replica := fmt.Sprintf("--replica=%s-%d.%s:%d", wc.Name, i, dbServiceName, writyPort)
+		replica := fmt.Sprintf("--replica=%s-%d.%s:%d", wc.Name, i, getServiceName(wc.Name), writyPort)
 		args = append(args, replica)
 	}
 
