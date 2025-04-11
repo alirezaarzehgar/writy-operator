@@ -18,14 +18,17 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	apiv1 "github.com/alirezaarzehgar/writy-operator/api/v1"
@@ -80,8 +83,8 @@ func (r *WrityClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, nil
 	}
 
-	var stfs appsv1.StatefulSet
-	err = r.Get(ctx, req.NamespacedName, &stfs)
+	stfs := &appsv1.StatefulSet{}
+	err = r.Get(ctx, req.NamespacedName, stfs)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			logger.Info("create StatefulSet if not exists", "WrityCluster", writyCluster)
@@ -94,9 +97,49 @@ func (r *WrityClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		}
 	}
 
+	balancerName := fmt.Sprintf("%sloadbalancer", writyCluster.Name)
+	depl := &appsv1.Deployment{}
+	findMe := types.NamespacedName{
+		Name:      balancerName,
+		Namespace: writyCluster.Namespace,
+	}
+	err = r.Get(ctx, findMe, depl)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			logger.Info("create loadbalancer if not exists")
+
+			err := createOrPatchLoadbalancer(ctx, logger, writyCluster, r.Client)
+			if err != nil {
+				return ctrl.Result{}, err
+			}
+			err = createOrPatchLoadbalancerService(ctx, logger, writyCluster, r.Client)
+			return ctrl.Result{}, err
+		} else {
+			logger.Info("failed to get loadbalancer deployment. Requeue request", "requeue time", requeueDuration, "error", err)
+			return ctrl.Result{RequeueAfter: requeueDuration}, err
+		}
+	}
+
 	if *stfs.Spec.Replicas != *writyCluster.Spec.Size {
 		logger.Info("we should slace up/down", "actual", stfs.Spec.Replicas, "desired", writyCluster.Spec.Size)
-		err := createOrPatchDbStatefulSet(ctx, logger, writyCluster, r.Client)
+
+		// TODO: we should add new replicas to loadbalancer nodes.
+		// In this design we should manually add and delete nodes to/from loadbalancer
+		// gRPC server.
+
+		controllerutil.CreateOrPatch(ctx, r.Client, stfs, func() error {
+			stfs.Spec.Replicas = writyCluster.Spec.Size
+			return nil
+		})
+
+		// WARNING: this design is not correct. It will be changed in the future.
+		logger.Info("delete loadbalancer and create new one")
+		err = r.Client.Delete(ctx, depl)
+		if err != nil {
+			return ctrl.Result{RequeueAfter: requeueDuration}, err
+		}
+
+		err = createOrPatchLoadbalancer(ctx, logger, writyCluster, r.Client)
 		if err != nil {
 			return ctrl.Result{RequeueAfter: requeueDuration}, err
 		}

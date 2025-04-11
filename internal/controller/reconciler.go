@@ -11,9 +11,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
@@ -27,26 +25,6 @@ var (
 	defaultLoadbalancerPort  int32 = 3000
 	defaultLogLevel                = "warn"
 )
-
-func getOwnerReferences(wc *apiv1.WrityCluster, c client.Client) ([]metav1.OwnerReference, error) {
-
-	gvk, err := apiutil.GVKForObject(wc, c.Scheme())
-	if err != nil {
-		return nil, err
-	}
-
-	ref := metav1.OwnerReference{
-		APIVersion:         gvk.Version,
-		Kind:               gvk.Kind,
-		Name:               wc.GetName(),
-		UID:                wc.GetUID(),
-		Controller:         ptr.To(true),
-		BlockOwnerDeletion: ptr.To(true),
-	}
-	owners := []metav1.OwnerReference{ref}
-
-	return owners, nil
-}
 
 func reconcielWrityCluster(ctx context.Context, logger logr.Logger, writyCluster *apiv1.WrityCluster, c client.Client) error {
 	if err := createOrPatchDbSertvice(ctx, logger, writyCluster, c); err != nil {
@@ -69,11 +47,6 @@ func reconcielWrityCluster(ctx context.Context, logger logr.Logger, writyCluster
 }
 
 func createOrPatchDbStatefulSet(ctx context.Context, logger logr.Logger, wc *apiv1.WrityCluster, c client.Client) error {
-	owners, err := getOwnerReferences(wc, c)
-	if err != nil {
-		return err
-	}
-
 	lables := map[string]string{
 		"apps":       wc.Name,
 		"controller": wc.Name,
@@ -140,8 +113,8 @@ func createOrPatchDbStatefulSet(ctx context.Context, logger logr.Logger, wc *api
 	if wc.Spec.StorageSpec != nil {
 		vct = []v1.PersistentVolumeClaim{{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:            ss.ClaimName,
-				OwnerReferences: owners,
+				Name:      ss.ClaimName,
+				Namespace: wc.Namespace,
 			},
 			Spec: v1.PersistentVolumeClaimSpec{
 				AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
@@ -178,35 +151,21 @@ func createOrPatchDbStatefulSet(ctx context.Context, logger logr.Logger, wc *api
 
 	stfs := &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            wc.Name,
-			Namespace:       wc.Namespace,
-			OwnerReferences: owners,
+			Name:      wc.Name,
+			Namespace: wc.Namespace,
 		},
 		Spec: stfsSpecs,
 	}
 
-	err = controllerutil.SetControllerReference(wc, stfs, c.Scheme())
+	err := controllerutil.SetControllerReference(wc, stfs, c.Scheme())
 	logger.Info("set controller reference from WrityCluster to StatefulSet", "error", err)
 
 	logger.Info("create/patch statefulset", "StatefulSet", stfs)
-	_, err = controllerutil.CreateOrPatch(ctx, c, stfs, func() error {
-		stfs.ObjectMeta = metav1.ObjectMeta{
-			Name:            wc.Name,
-			Namespace:       wc.Namespace,
-			OwnerReferences: owners,
-		}
-		stfs.Spec = stfsSpecs
-		return nil
-	})
+	_, err = controllerutil.CreateOrPatch(ctx, c, stfs, nil)
 	return err
 }
 
 func createOrPatchDbSertvice(ctx context.Context, logger logr.Logger, wc *apiv1.WrityCluster, c client.Client) error {
-	owners, err := getOwnerReferences(wc, c)
-	if err != nil {
-		return err
-	}
-
 	labels := map[string]string{
 		"apps":       wc.Name,
 		"controller": wc.Name,
@@ -228,35 +187,21 @@ func createOrPatchDbSertvice(ctx context.Context, logger logr.Logger, wc *apiv1.
 	serviceName := fmt.Sprintf("%s-service", wc.Name)
 	service := &v1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            serviceName,
-			Namespace:       wc.Namespace,
-			OwnerReferences: owners,
+			Name:      serviceName,
+			Namespace: wc.Namespace,
 		},
 		Spec: serviceSpecs,
 	}
 
-	err = controllerutil.SetControllerReference(wc, service, c.Scheme())
+	err := controllerutil.SetControllerReference(wc, service, c.Scheme())
 	logger.Info("set controller reference from WrityCluster to database service", "error", err)
 
 	logger.Info("create/update writy service", "port", port, "labels", labels)
-	_, err = controllerutil.CreateOrPatch(ctx, c, service, func() error {
-		service.ObjectMeta = metav1.ObjectMeta{
-			Name:            serviceName,
-			Namespace:       wc.Namespace,
-			OwnerReferences: owners,
-		}
-		service.Spec = serviceSpecs
-		return nil
-	})
+	_, err = controllerutil.CreateOrPatch(ctx, c, service, nil)
 	return err
 }
 
 func createOrPatchLoadbalancerService(ctx context.Context, logger logr.Logger, wc *apiv1.WrityCluster, c client.Client) error {
-	owners, err := getOwnerReferences(wc, c)
-	if err != nil {
-		return err
-	}
-
 	balancerName := fmt.Sprintf("%sloadbalancer", wc.Name)
 	labels := map[string]string{
 		"apps":       balancerName,
@@ -283,26 +228,17 @@ func createOrPatchLoadbalancerService(ctx context.Context, logger logr.Logger, w
 	balancerService := fmt.Sprintf("%s-service", balancerName)
 	service := &v1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            balancerService,
-			Namespace:       wc.Namespace,
-			OwnerReferences: owners,
+			Name:      balancerService,
+			Namespace: wc.Namespace,
 		},
 		Spec: serviceSpecs,
 	}
 
-	err = controllerutil.SetControllerReference(wc, service, c.Scheme())
+	err := controllerutil.SetControllerReference(wc, service, c.Scheme())
 	logger.Info("set controller reference from WrityCluster to loadbalancer service", "error", err)
 
 	logger.Info("create/update loadbalancer service", "port", port, "labels", labels)
-	_, err = controllerutil.CreateOrPatch(ctx, c, service, func() error {
-		service.ObjectMeta = metav1.ObjectMeta{
-			Name:            balancerService,
-			Namespace:       wc.Namespace,
-			OwnerReferences: owners,
-		}
-		service.Spec = serviceSpecs
-		return nil
-	})
+	_, err = controllerutil.CreateOrPatch(ctx, c, service, nil)
 	return err
 }
 
@@ -366,11 +302,6 @@ func createOrPatchLoadbalancer(ctx context.Context, logger logr.Logger, wc *apiv
 		}},
 	}
 
-	owners, err := getOwnerReferences(wc, c)
-	if err != nil {
-		return err
-	}
-
 	deplSpecs := appsv1.DeploymentSpec{
 		Selector: &metav1.LabelSelector{MatchLabels: labels},
 		Template: v1.PodTemplateSpec{
@@ -385,25 +316,16 @@ func createOrPatchLoadbalancer(ctx context.Context, logger logr.Logger, wc *apiv
 
 	depl := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            balancerName,
-			Namespace:       wc.Namespace,
-			OwnerReferences: owners,
+			Name:      balancerName,
+			Namespace: wc.Namespace,
 		},
 		Spec: deplSpecs,
 	}
 
-	err = controllerutil.SetControllerReference(wc, depl, c.Scheme())
+	err := controllerutil.SetControllerReference(wc, depl, c.Scheme())
 	logger.Info("set controller reference from WrityCluster to database deployment", "error", err)
 
 	logger.Info("create/patch deployment", "deployment", depl)
-	_, err = controllerutil.CreateOrPatch(ctx, c, depl, func() error {
-		depl.ObjectMeta = metav1.ObjectMeta{
-			Name:            balancerName,
-			Namespace:       wc.Namespace,
-			OwnerReferences: owners,
-		}
-		depl.Spec = deplSpecs
-		return nil
-	})
+	_, err = controllerutil.CreateOrPatch(ctx, c, depl, nil)
 	return err
 }
